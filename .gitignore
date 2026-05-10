@@ -1,0 +1,18 @@
+# Build artifacts
+/target/
+/dist/
+/c-cosmo/mouse-jiggler
+/c-cosmo/*.com.dbg
+/c-cosmo/*.aarch64.elf
+
+# Cosmopolitan toolchain (large; downloaded by build script and CI)
+/tools/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
