@@ -1,0 +1,98 @@
+name: CI
+
+# Per project policy: CI runs only on pull-request validation.
+# After a PR merges to main, no workflow runs against main itself.
+# No artifacts are uploaded; no releases are produced. Each matrix entry
+# builds and smoke-tests locally on its own native runner.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            build_ape: true
+          - label: Linux arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            build_ape: true
+          # macOS x86_64 (Intel) is intentionally not in the matrix — GitHub
+          # Actions no longer offers a free public x86_64 macOS runner. The
+          # x86_64 slice is still produced by the APE build and verified by
+          # the project author manually on Intel hardware.
+          - label: macOS arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            build_ape: true
+          # cosmocc does not run on Windows hosts, so the Windows entries
+          # only build/test the Rust implementation. The APE is verified
+          # to load on Windows by the project author manually.
+          - label: Windows x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            build_ape: false
+          - label: Windows arm64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            build_ape: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install X11 runtime libs (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y libx11-6 libxtst6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: cargo build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: cargo test
+        run: cargo test --release --target ${{ matrix.target }}
+
+      - name: Smoke test Rust binary (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          ./target/${{ matrix.target }}/release/mouse-jiggler --help
+          ./target/${{ matrix.target }}/release/mouse-jiggler -V
+
+      - name: Smoke test Rust binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\target\${{ matrix.target }}\release\mouse-jiggler.exe --help
+          .\target\${{ matrix.target }}\release\mouse-jiggler.exe -V
+
+      - name: Build APE (cosmocc)
+        if: matrix.build_ape
+        shell: bash
+        run: |
+          mkdir -p tools && cd tools
+          curl -fsSL -o cosmocc.zip https://cosmo.zip/pub/cosmocc/cosmocc.zip
+          mkdir -p cosmocc && cd cosmocc && unzip -q ../cosmocc.zip
+          cd ../..
+          cd c-cosmo && make
+
+      - name: Smoke test APE
+        if: matrix.build_ape
+        shell: bash
+        run: |
+          cd c-cosmo
+          file mouse-jiggler
+          ./mouse-jiggler --help
+          ./mouse-jiggler -V

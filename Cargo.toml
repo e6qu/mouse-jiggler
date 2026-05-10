@@ -1,0 +1,16 @@
+[package]
+name = "mouse-jiggler"
+version = "0.1.0"
+edition = "2021"
+description = "Tiny cross-platform mouse jiggler with no third-party deps"
+
+[[bin]]
+name = "mouse-jiggler"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
