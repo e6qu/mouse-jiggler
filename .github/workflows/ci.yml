@@ -25,10 +25,10 @@ jobs:
             os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             build_ape: true
-          - label: macOS x86_64
-            os: macos-13
-            target: x86_64-apple-darwin
-            build_ape: true
+          # macOS x86_64 (Intel) is intentionally not in the matrix — GitHub
+          # Actions no longer offers a free public x86_64 macOS runner. The
+          # x86_64 slice is still produced by the APE build and verified by
+          # the project author manually on Intel hardware.
           - label: macOS arm64
             os: macos-latest
             target: aarch64-apple-darwin

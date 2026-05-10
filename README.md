@@ -148,14 +148,14 @@ Each branch uses `cosmo_dlopen` (Cosmopolitan's polyglot dlopen — wraps `LoadL
 
 ## CI
 
-The PR that brings in this code uses a matrix in `.github/workflows/ci.yml` that builds and tests both implementations on six native runners:
+The PR that brings in this code uses a matrix in `.github/workflows/ci.yml` that builds and tests both implementations on five native runners:
 
 | | Linux | macOS | Windows |
 |---|---|---|---|
-| **x86_64** | `ubuntu-latest` | `macos-13` | `windows-latest` |
+| **x86_64** | `ubuntu-latest` | _no public runner_ | `windows-latest` |
 | **arm64** | `ubuntu-24.04-arm` | `macos-latest` | `windows-11-arm` |
 
-Triggered only on `pull_request` — `main` itself is not exercised by CI after merge.
+GitHub Actions no longer offers a free public `macos-13` (Intel) runner, so x86_64 macOS is not exercised in CI. The x86_64 macOS slice is still emitted by the APE build and verified manually by the project author. Triggered only on `pull_request` — `main` itself is not exercised by CI after merge.
 
 ## Background
 
