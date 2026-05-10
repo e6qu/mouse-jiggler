@@ -33,9 +33,34 @@ MODES:
   random   Random offset in [-distance,+distance]^2, then return to origin.
 ```
 
+## Prerequisites
+
+You build everything yourself from source. This repo publishes no binary releases and no CI artifacts — only build instructions. Pick whichever build matches your need.
+
+| Build | Host requirement | Tools |
+|---|---|---|
+| **Universal APE** (one binary, all 6 OS×arch targets) | Linux or macOS host (x86_64 or arm64) | `curl`, `unzip`, `make`, a POSIX shell |
+| **Per-OS Rust** (one binary per target) | Any OS that Rust runs on | Rust ≥ 1.94 via [rustup.rs](https://rustup.rs); plus `lipo` if you want a Mac universal binary |
+
+The APE build cannot run on a Windows host (cosmocc is Linux/macOS-only). To produce an APE from a Windows machine, use WSL2 or build inside a Linux Docker container.
+
+Install Rust if you don't have it:
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+On macOS you also need the Command Line Tools (provides `lipo`, `make`, etc.):
+
+```sh
+xcode-select --install
+```
+
+On Debian/Ubuntu, the host needs `curl unzip make build-essential` for the APE build, or just `curl build-essential` for Rust.
+
 ## Build A — Universal APE (recommended)
 
-Builds one ~765 KB binary that runs on Linux + macOS + Windows × x86_64 + arm64. Build host must be Linux or macOS (cosmocc doesn't build on Windows; the *output* runs on Windows fine).
+Builds one ~765 KB binary that runs on Linux + macOS + Windows × x86_64 + arm64. Build host must be Linux or macOS.
 
 ```sh
 # 1. Fetch cosmocc (~440 MB zip, ~1.3 GB extracted)
@@ -48,8 +73,11 @@ cd ../..
 cd c-cosmo
 make            # produces ./mouse-jiggler
 
-# 3. Run anywhere
+# 3. Run on the build host
 ./mouse-jiggler --once -m pixel -d 1 -v
+
+# 4. Copy the binary to any target machine and run it there
+#    — same file, no recompilation, no .com/.exe rename needed unless on Windows
 ```
 
 The output `c-cosmo/mouse-jiggler` is one polyglot file. To deploy:

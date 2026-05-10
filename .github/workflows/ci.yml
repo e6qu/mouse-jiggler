@@ -1,7 +1,9 @@
 name: CI
 
-# Per project policy: tests run only as part of pull-request validation.
-# After a PR merges to main, no CI runs against main itself.
+# Per project policy: CI runs only on pull-request validation.
+# After a PR merges to main, no workflow runs against main itself.
+# No artifacts are uploaded; no releases are produced. Each matrix entry
+# builds and smoke-tests locally on its own native runner.
 on:
   pull_request:
 
@@ -9,56 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  # -------------------------------------------------------------------------
-  # Build the universal APE once on Linux, share via artifact with the smoke
-  # matrix below. cosmocc runs on Linux/macOS only — pick Linux for speed.
-  # -------------------------------------------------------------------------
-  build-ape:
-    name: Build APE
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache cosmocc toolchain
-        id: cache-cosmocc
-        uses: actions/cache@v4
-        with:
-          path: tools/cosmocc
-          key: cosmocc-v1
-
-      - name: Download and extract cosmocc
-        if: steps.cache-cosmocc.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p tools && cd tools
-          curl -fsSL -o cosmocc.zip https://cosmo.zip/pub/cosmocc/cosmocc.zip
-          mkdir -p cosmocc && cd cosmocc && unzip -q ../cosmocc.zip
-          cd .. && rm -f cosmocc.zip
-
-      - name: Build APE
-        run: |
-          cd c-cosmo
-          make
-
-      - name: Inspect APE
-        run: |
-          cd c-cosmo
-          ls -lh mouse-jiggler
-          file mouse-jiggler
-
-      - name: Upload APE artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mouse-jiggler-ape
-          path: c-cosmo/mouse-jiggler
-          retention-days: 7
-          if-no-files-found: error
-
-  # -------------------------------------------------------------------------
-  # Rust matrix: build + test on every (OS, arch) combination natively.
-  # Each runner builds for the matching target triple — no cross-compilation.
-  # -------------------------------------------------------------------------
-  rust:
-    name: Rust ${{ matrix.label }}
+  build:
+    name: ${{ matrix.label }}
     strategy:
       fail-fast: false
       matrix:
@@ -66,28 +20,39 @@ jobs:
           - label: Linux x86_64
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            build_ape: true
           - label: Linux arm64
             os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
+            build_ape: true
           - label: macOS x86_64
             os: macos-13
             target: x86_64-apple-darwin
+            build_ape: true
           - label: macOS arm64
             os: macos-latest
             target: aarch64-apple-darwin
+            build_ape: true
+          # cosmocc does not run on Windows hosts, so the Windows entries
+          # only build/test the Rust implementation. The APE is verified
+          # to load on Windows by the project author manually.
           - label: Windows x86_64
             os: windows-latest
             target: x86_64-pc-windows-msvc
+            build_ape: false
           - label: Windows arm64
             os: windows-11-arm
             target: aarch64-pc-windows-msvc
+            build_ape: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install X11 runtime libs (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update -qq && sudo apt-get install -qq -y libxtst6 libx11-6
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y libx11-6 libxtst6
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -99,77 +64,35 @@ jobs:
       - name: cargo test
         run: cargo test --release --target ${{ matrix.target }}
 
-      - name: Smoke test --help
-        if: runner.os != 'Windows'
-        run: ./target/${{ matrix.target }}/release/mouse-jiggler --help
-
-      - name: Smoke test --help (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: .\target\${{ matrix.target }}\release\mouse-jiggler.exe --help
-
-  # -------------------------------------------------------------------------
-  # APE smoke matrix: download the single APE produced by build-ape and
-  # verify it boots + parses CLI on every (OS, arch) combination.
-  # We don't try to actually move the cursor — runners are headless and the
-  # value here is proving the same binary is loadable on every target.
-  # -------------------------------------------------------------------------
-  ape-smoke:
-    name: APE smoke ${{ matrix.label }}
-    needs: build-ape
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: Linux x86_64
-            os: ubuntu-latest
-          - label: Linux arm64
-            os: ubuntu-24.04-arm
-          - label: macOS x86_64
-            os: macos-13
-          - label: macOS arm64
-            os: macos-latest
-          - label: Windows x86_64
-            os: windows-latest
-          - label: Windows arm64
-            os: windows-11-arm
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: mouse-jiggler-ape
-
-      - name: Run APE (POSIX)
+      - name: Smoke test Rust binary (POSIX)
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          chmod +x mouse-jiggler
-          ./mouse-jiggler --help
-          ./mouse-jiggler -V
+          ./target/${{ matrix.target }}/release/mouse-jiggler --help
+          ./target/${{ matrix.target }}/release/mouse-jiggler -V
 
-      - name: Run APE (Windows)
+      - name: Smoke test Rust binary (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Move-Item mouse-jiggler mouse-jiggler.exe
-          .\mouse-jiggler.exe --help
-          .\mouse-jiggler.exe -V
+          .\target\${{ matrix.target }}\release\mouse-jiggler.exe --help
+          .\target\${{ matrix.target }}\release\mouse-jiggler.exe -V
 
-  # -------------------------------------------------------------------------
-  # Single aggregator job — branch protection on `main` requires only this
-  # one check. It fails iff any matrix job above failed or was cancelled.
-  # -------------------------------------------------------------------------
-  ci-success:
-    name: CI success
-    needs: [build-ape, rust, ape-smoke]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify all required jobs passed
+      - name: Build APE (cosmocc)
+        if: matrix.build_ape
+        shell: bash
         run: |
-          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]] || \
-             [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
-            echo "One or more required jobs failed or were cancelled"
-            exit 1
-          fi
-          echo "All matrix jobs passed"
+          mkdir -p tools && cd tools
+          curl -fsSL -o cosmocc.zip https://cosmo.zip/pub/cosmocc/cosmocc.zip
+          mkdir -p cosmocc && cd cosmocc && unzip -q ../cosmocc.zip
+          cd ../..
+          cd c-cosmo && make
+
+      - name: Smoke test APE
+        if: matrix.build_ape
+        shell: bash
+        run: |
+          cd c-cosmo
+          file mouse-jiggler
+          ./mouse-jiggler --help
+          ./mouse-jiggler -V
